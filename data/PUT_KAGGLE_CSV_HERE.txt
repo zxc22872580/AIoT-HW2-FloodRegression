@@ -1,0 +1,11 @@
+Download from:
+  https://www.kaggle.com/competitions/playground-series-s4e5/data
+
+Place these files in THIS folder:
+  train.csv            (~1,117,957 rows: id + 20 features + FloodProbability)
+  test.csv             (~745,305 rows: id + 20 features)      [optional]
+  sample_submission.csv                                        [optional]
+
+The main script auto-detects train.csv here. If it is absent, the script
+falls back to a clearly-labelled synthetic surrogate so the pipeline still
+runs, but those numbers are NOT submittable.

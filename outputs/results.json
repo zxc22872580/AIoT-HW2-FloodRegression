@@ -1,0 +1,296 @@
+{
+  "business_understanding": {
+    "task": "regression",
+    "target": "FloodProbability",
+    "metric": "R2",
+    "analytic_success_threshold_r2": 0.8,
+    "published_winning_r2": 0.869
+  },
+  "data_source": {
+    "label": "MIRROR-SAMPLE",
+    "is_real_kaggle_data": true,
+    "n_rows": 5000,
+    "n_raw_features": 20
+  },
+  "data_understanding": {
+    "max_abs_single_feature_corr": 0.21356727656229849,
+    "row_sum_corr_with_target": 0.9131285225838163,
+    "n_duplicate_rows": 0,
+    "n_missing_total": 0,
+    "target_stats": {
+      "count": 5000.0,
+      "mean": 0.50507,
+      "std": 0.05000875198457777,
+      "min": 0.32,
+      "25%": 0.47,
+      "50%": 0.505,
+      "75%": 0.54,
+      "max": 0.685
+    },
+    "original_dataset_check": {
+      "n_rows": 50000,
+      "corr_sum_target": 0.9999999999999996,
+      "max_abs_deviation_from_rule": 1.1102230246251565e-16,
+      "rule_holds_exactly": true,
+      "rule": "FloodProbability = 0.005 * sum(20 factors)",
+      "used_for_modelling": false
+    }
+  },
+  "sum_redundancy_check": {
+    "r2_without_sum": 0.8344757911933561,
+    "r2_with_sum": 0.8344757911933558,
+    "difference": -3.3306690738754696e-16
+  },
+  "feature_selection": {
+    "k_requested": 10,
+    "selected_f_test": [
+      "MonsoonIntensity",
+      "TopographyDrainage",
+      "RiverManagement",
+      "Urbanization",
+      "DamsQuality",
+      "AgriculturalPractices",
+      "Encroachments",
+      "CoastalVulnerability",
+      "Watersheds",
+      "PopulationScore"
+    ],
+    "selected_rfe": [
+      "MonsoonIntensity",
+      "TopographyDrainage",
+      "Urbanization",
+      "DamsQuality",
+      "DrainageSystems",
+      "CoastalVulnerability",
+      "Watersheds",
+      "DeterioratingInfrastructure",
+      "PopulationScore",
+      "PoliticalFactors"
+    ],
+    "selected_sfs": [
+      "MonsoonIntensity",
+      "TopographyDrainage",
+      "Urbanization",
+      "DamsQuality",
+      "DrainageSystems",
+      "CoastalVulnerability",
+      "Watersheds",
+      "DeterioratingInfrastructure",
+      "PopulationScore",
+      "PoliticalFactors"
+    ],
+    "selected_lasso": [
+      "Urbanization",
+      "DamsQuality",
+      "PoliticalFactors",
+      "CoastalVulnerability",
+      "DrainageSystems",
+      "PopulationScore",
+      "ClimateChange",
+      "TopographyDrainage",
+      "RiverManagement",
+      "MonsoonIntensity"
+    ],
+    "selected_permutation": [
+      "Urbanization",
+      "PoliticalFactors",
+      "DamsQuality",
+      "CoastalVulnerability",
+      "DrainageSystems",
+      "ClimateChange",
+      "RiverManagement",
+      "PopulationScore",
+      "MonsoonIntensity",
+      "Watersheds"
+    ],
+    "consensus_at_least_3_votes": [
+      "MonsoonIntensity",
+      "PopulationScore",
+      "DamsQuality",
+      "Urbanization",
+      "CoastalVulnerability",
+      "Watersheds",
+      "TopographyDrainage",
+      "PoliticalFactors",
+      "DrainageSystems",
+      "RiverManagement"
+    ],
+    "best_k_by_holdout_r2": 20,
+    "best_k_r2": 0.8344757911933561,
+    "all_20_r2": 0.8344757911933561,
+    "decision": "keep all 20 features"
+  },
+  "modeling": {
+    "best_single_feature": "DamsQuality",
+    "comparison": [
+      {
+        "model": "M7 Multiple LR (20 + aggregates)",
+        "n_features": 27,
+        "train_R2": 0.8393977643739,
+        "test_R2": 0.8405083866994885,
+        "test_Adj_R2": 0.8360780641078076,
+        "test_RMSE": 0.020277020804892524,
+        "test_MAE": 0.01597983132561712,
+        "test_MSE": 0.0004111575727220443
+      },
+      {
+        "model": "M2 Multiple LR (20 raw)",
+        "n_features": 20,
+        "train_R2": 0.8345906994338148,
+        "test_R2": 0.8344757911933561,
+        "test_Adj_R2": 0.8310942956099722,
+        "test_RMSE": 0.02065693969042779,
+        "test_MAE": 0.01621184853223722,
+        "test_MSE": 0.000426709157373971
+      },
+      {
+        "model": "M5 ElasticNet (20 raw, CV)",
+        "n_features": 20,
+        "train_R2": 0.8345906862395406,
+        "test_R2": 0.8344728643965045,
+        "test_Adj_R2": 0.8310913090215607,
+        "test_RMSE": 0.02065712231748649,
+        "test_MAE": 0.016212552665103692,
+        "test_MSE": 0.00042671670243959835
+      },
+      {
+        "model": "M3 Ridge (20 raw, CV alpha)",
+        "n_features": 20,
+        "train_R2": 0.8345898018169144,
+        "test_R2": 0.8344524810537712,
+        "test_Adj_R2": 0.8310705092673314,
+        "test_RMSE": 0.020658394158024184,
+        "test_MAE": 0.016217640964094292,
+        "test_MSE": 0.00042676924918828775
+      },
+      {
+        "model": "M4 Lasso (20 raw, CV alpha)",
+        "n_features": 20,
+        "train_R2": 0.8345896343858498,
+        "test_R2": 0.8344483240859977,
+        "test_Adj_R2": 0.831066267376825,
+        "test_RMSE": 0.02065865352687557,
+        "test_MAE": 0.016218269919636562,
+        "test_MSE": 0.0004267799655434885
+      },
+      {
+        "model": "M8 HistGradientBoosting (20 raw)",
+        "n_features": 20,
+        "train_R2": 0.9746603011256354,
+        "test_R2": 0.7402644899249406,
+        "test_Adj_R2": 0.7349583508018547,
+        "test_RMSE": 0.025876223025247905,
+        "test_MAE": 0.020924405580149966,
+        "test_MSE": 0.0006695789180523698
+      },
+      {
+        "model": "M6 Multiple LR (10 selected)",
+        "n_features": 10,
+        "train_R2": 0.4047619157943506,
+        "test_R2": 0.3455495394570498,
+        "test_Adj_R2": 0.33893224460828386,
+        "test_RMSE": 0.04107462527625035,
+        "test_MAE": 0.03324672534983916,
+        "test_MSE": 0.0016871248415843841
+      },
+      {
+        "model": "M1 Simple LR (1 feature)",
+        "n_features": 1,
+        "train_R2": 0.04648797160257101,
+        "test_R2": 0.03886847477175137,
+        "test_Adj_R2": 0.03790541713124207,
+        "test_RMSE": 0.0497767608857514,
+        "test_MAE": 0.040082527370563434,
+        "test_MSE": 0.0024777259242772702
+      },
+      {
+        "model": "M0 Baseline (mean)",
+        "n_features": 0,
+        "train_R2": 0.0,
+        "test_R2": -0.003534954708115823,
+        "test_Adj_R2": -0.003534954708115823,
+        "test_RMSE": 0.05086294158385357,
+        "test_MAE": 0.04096946750000001,
+        "test_MSE": 0.0025870388265625006
+      }
+    ],
+    "final_model": "M7 Multiple LR (20 + aggregates)",
+    "cv5_r2_folds": [
+      0.8323431963462904,
+      0.808571524545778,
+      0.8504895700038451,
+      0.8520147878651118,
+      0.838476059519496
+    ],
+    "cv5_r2_mean": 0.8363790276561043,
+    "cv5_r2_std": 0.015732305037019396
+  },
+  "evaluation": {
+    "final_model": "M7 Multiple LR (20 + aggregates)",
+    "ols_r2": 0.8393977643739,
+    "ols_adj_r2": 0.8383060573341455,
+    "ols_f_stat": 768.8855469528669,
+    "ols_f_pvalue": 0.0,
+    "n_significant_predictors": 22,
+    "n_predictors": 27,
+    "train_metrics": {
+      "MAE": 0.015712791102695346,
+      "MSE": 0.00039815941112211994,
+      "RMSE": 0.019953932222048866,
+      "R2": 0.8393977643739,
+      "Adj_R2": 0.8383060573341455
+    },
+    "test_metrics": {
+      "MAE": 0.01597983132561712,
+      "MSE": 0.0004111575727220443,
+      "RMSE": 0.020277020804892524,
+      "R2": 0.8405083866994885,
+      "Adj_R2": 0.8360780641078076
+    },
+    "train_test_r2_gap": -0.0011106223255884506,
+    "assumptions": {
+      "linearity_corr_fitted_resid": -2.273079288174263e-15,
+      "durbin_watson": 1.9862669995080031,
+      "breusch_pagan_stat": 146.93794924903702,
+      "breusch_pagan_p": 1.843261196036901e-18,
+      "jarque_bera_stat": 1034.9129505022806,
+      "jarque_bera_p": 1.8685648428894257e-225,
+      "shapiro_W": 0.953214025929081,
+      "shapiro_p": 5.519133884184014e-34,
+      "resid_skew": 0.7642916378279837,
+      "resid_excess_kurtosis": 1.967971258021457,
+      "n_terms_vif_gt_10": 0,
+      "max_vif": 8.996355353478691,
+      "homoscedasticity_ok": false,
+      "normality_ok": false,
+      "hc3_se_median_inflation": 0.9995575939512877,
+      "hc3_significance_flips": 1
+    }
+  },
+  "prediction_intervals": {
+    "alpha": 0.05,
+    "mean_ci_width": 0.006638531066478243,
+    "mean_pi_width": 0.07881188043035525,
+    "pi_to_ci_width_ratio": 11.871885457962488,
+    "empirical_pi_coverage": 0.929,
+    "empirical_ci_coverage": 0.096,
+    "n_rows_for_coverage": 1000
+  },
+  "deployment_leaderboard": {
+    "n_teams": 2794,
+    "rank": 2341,
+    "percentile": 83.7866857551897,
+    "top_score": 0.86905,
+    "median_score": 0.8579950000000001,
+    "top_team": "aldparis"
+  },
+  "deployment": {
+    "model_artifact": "7115056116_final_model.joblib",
+    "best_linear_model": "M7 Multiple LR (20 + aggregates)",
+    "best_linear_test_r2": 0.8405083866994885,
+    "best_linear_test_rmse": 0.020277020804892524,
+    "gbdt_test_r2": 0.7402644899249406,
+    "published_winning_r2": 0.869,
+    "submission_written": false
+  }
+}

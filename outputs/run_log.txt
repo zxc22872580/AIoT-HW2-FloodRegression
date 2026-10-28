@@ -1,0 +1,465 @@
+===============================================================================
+  HW2 - Multiple Linear Regression / CRISP-DM   (student 7115056116)
+  Dataset: Kaggle Playground Series S4E5 - Flood Prediction
+  https://www.kaggle.com/competitions/playground-series-s4e5
+===============================================================================
+
+===============================================================================
+[1/6]  BUSINESS UNDERSTANDING
+===============================================================================
+Problem framing
+---------------
+A regional disaster-management authority must allocate a finite flood
+mitigation budget across many administrative districts. Each district is
+audited once per planning cycle and scored on 20 ordinal risk factors
+(monsoon intensity, drainage quality, deforestation, dam condition,
+governance quality, ...). What the authority needs is a single,
+defensible number per district: the probability that the district floods
+in the coming season.
+
+Why this is a regression problem
+--------------------------------
+The quantity of interest, FloodProbability, is continuous on [0, 1].
+Ranking districts requires a calibrated magnitude, not a yes/no label,
+so this is regression rather than classification.
+
+Why LINEAR regression specifically
+----------------------------------
+Three business constraints push towards a linear model:
+  (a) Auditability - budget decisions get challenged by stakeholders, so
+      each factor needs a signed, quantified coefficient ("+1 point of
+      Siltation raises flood probability by X").
+  (b) Actionability - coefficients double as policy levers: the authority
+      can ask which factor buys the largest risk reduction per dollar.
+  (c) Cost - a closed-form model scores 745k districts in milliseconds
+      and retrains in seconds on commodity hardware.
+A gradient-boosted tree offers none of (a)-(c) cheaply, so linear
+regression is preferred unless it loses materially on accuracy.
+Section [5] tests exactly that.
+
+Success criteria
+----------------
+  Business : rank-order districts well enough to prioritise spending.
+  Analytic : R^2 >= 0.80 on held-out data, and within ~0.03 R^2 of the
+             published competition-winning score (~0.869).
+  Model    : residuals must satisfy the OLS assumptions well enough that
+             the reported coefficients and intervals are trustworthy.
+
+
+===============================================================================
+[1.5/6]  DATA LOADING
+===============================================================================
+  Source   : [MIRROR-SAMPLE] data/train_sample.csv
+  Shape    : 5,000 rows x 22 cols
+  Provenance: A 5,000-row sample of the official S4E5 training set, taken from a public GitHub mirror of the competition data. Genuine competition data, but a sample: estimates are noisier than the full set would give.
+
+  NOTE ON SAMPLE SIZE
+  The analysis below is statistically valid on 5,000 rows,
+  but cross-validation folds and the leaderboard comparison
+  carry more sampling error than the full 1.1M-row set.
+  Drop the official train.csv into data/ to remove this
+  caveat; nothing else needs to change.
+
+===============================================================================
+[2/6]  DATA UNDERSTANDING
+===============================================================================
+  Shape                : 5,000 rows x 22 cols
+  Input features       : 20  (meets the 10-20 spec)
+  Target               : FloodProbability
+  Duplicated rows      : 0
+  Total missing values : 0
+  Memory               : 0.9 MB
+
+  Per-feature profile:
+                        feature     mean      std      min      50%      max  n_unique  missing     skew  corr_with_target
+               MonsoonIntensity   4.9366   2.0698   0.0000   5.0000  16.0000        16        0   0.4867            0.1764
+             TopographyDrainage   4.9188   2.0568   0.0000   5.0000  15.0000        16        0   0.3847            0.1976
+                RiverManagement   4.9864   2.0860   0.0000   5.0000  14.0000        15        0   0.4496            0.1889
+                  Deforestation   4.9610   2.0454   0.0000   5.0000  14.0000        15        0   0.4344            0.1636
+                   Urbanization   4.8794   2.0657   0.0000   5.0000  13.0000        14        0   0.3727            0.2087
+                  ClimateChange   4.8716   2.0468   0.0000   5.0000  15.0000        16        0   0.4219            0.1671
+                    DamsQuality   4.9948   2.1329   0.0000   5.0000  15.0000        16        0   0.5270            0.2136
+                      Siltation   4.9236   2.1009   0.0000   5.0000  14.0000        15        0   0.4793            0.1637
+          AgriculturalPractices   4.8982   2.0334   0.0000   5.0000  13.0000        14        0   0.4095            0.1856
+                  Encroachments   4.9582   2.0728   0.0000   5.0000  15.0000        16        0   0.5063            0.1795
+IneffectiveDisasterPreparedness   4.9558   2.0892   0.0000   5.0000  14.0000        15        0   0.4609            0.1625
+                DrainageSystems   4.9638   2.0892   0.0000   5.0000  14.0000        15        0   0.4393            0.1683
+           CoastalVulnerability   4.9030   2.0776   0.0000   5.0000  14.0000        15        0   0.4478            0.1678
+                     Landslides   4.9554   2.0885   0.0000   5.0000  14.0000        15        0   0.3537            0.1631
+                     Watersheds   4.9290   2.0888   0.0000   5.0000  15.0000        15        0   0.4363            0.1898
+    DeterioratingInfrastructure   4.9750   2.0874   0.0000   5.0000  15.0000        16        0   0.4781            0.1756
+                PopulationScore   4.9366   2.0619   0.0000   5.0000  16.0000        16        0   0.4572            0.1806
+                    WetlandLoss   4.9752   2.1004   0.0000   5.0000  15.0000        15        0   0.4182            0.1689
+             InadequatePlanning   4.9824   2.1318   0.0000   5.0000  15.0000        16        0   0.5172            0.1688
+               PoliticalFactors   4.9948   2.1229   0.0000   5.0000  16.0000        15        0   0.4410            0.1748
+    -> table  saved: outputs/tables/02_feature_profile.csv
+
+  Target: mean=0.5051 std=0.0500 min=0.3200 max=0.6850 skew=0.0104 n_unique=71
+
+KEY INSIGHT
+-----------
+  Strongest SINGLE feature correlation with target : 0.2136
+  Correlation of the ROW SUM of all 20 features    : 0.9131
+
+  No individual factor explains much on its own, yet their simple
+  unweighted sum is almost perfectly correlated with the target. That is
+  the signature of an additive generative process - precisely the
+  functional form multiple linear regression assumes. It predicts that
+  OLS on all 20 features will be strong, and that an explicit aggregate
+  feature should capture nearly all remaining signal. Both predictions
+  are tested in [4] and [5].
+
+
+  STRUCTURAL EVIDENCE from the original 50,000-row dataset
+  ------------------------------------------------------------------
+    rows                         : 50,000
+    corr(row sum, target)        : 1.0000000000
+    max |target - 0.005 x sum|   : 1.11e-16
+    target == 0.005 x sum exactly: True
+    => The generative rule is EXACTLY linear and additive, with
+       all 20 coefficients equal. The competition data used for
+       modelling is a NOISY synthetic expansion of this rule,
+       which is why multiple linear regression is not merely a
+       reasonable choice here - it is the correct model form.
+    => This file is deliberately NOT used for modelling: zero
+       residual means R^2 = 1.0 and degenerate intervals.
+    -> figure saved: outputs/figures/01_target_distribution.png
+    -> figure saved: outputs/figures/02_feature_distributions.png
+    -> figure saved: outputs/figures/03_correlation_heatmap.png
+    -> figure saved: outputs/figures/04_key_insight_rowsum.png
+
+===============================================================================
+[3/6]  DATA PREPARATION
+===============================================================================
+  3.1 Missing values: 0 found.
+      Nothing to impute. Imputation code retained for reuse.
+
+  3.2 Outliers: 48 rows hold at least one value beyond 3*IQR (0.96%).
+      DECISION: keep them. The factors are bounded audit scores, so
+      high values are genuine high-risk districts, not sensor errors.
+      Removing them would bias the model against the districts that
+      matter most for the business question.
+
+  3.3 Feature engineering: 20 raw -> 27 columns (+7 row aggregates)
+      Added: agg_std, agg_max, agg_min, agg_median, agg_skew, agg_sum_sq, agg_sum_cu
+
+  3.4 Hold-out split (80/20, seed=42):
+      train = 4,000 rows | test = 1,000 rows
+      train target mean = 0.5057 | test target mean = 0.5027  (well balanced)
+
+  3.3b Verifying that agg_sum is redundant for a LINEAR model:
+      20 raw features            -> test R² = 0.8344757912
+      20 raw features + agg_sum  -> test R² = 0.8344757912
+      difference                 = -3.33e-16  (zero to numerical precision, as predicted)
+
+  3.5 Scaling: StandardScaler, fitted on TRAIN ONLY.
+      Required so Ridge/Lasso penalties are comparable across
+      features, and so coefficients can be read as effect sizes.
+      Wrapped in a Pipeline, which structurally prevents leakage.
+
+===============================================================================
+[3.6/6]  FEATURE SELECTION  (5 independent methods)
+===============================================================================
+  (1) SelectKBest / f_regression  (filter, k=10)
+  (2) RFE with LinearRegression   (wrapper, k=10)
+  (3) SequentialFeatureSelector   (forward, k=10, 3-fold CV)
+  (4) LassoCV coefficient magnitude (embedded)
+      LassoCV alpha = 2.15e-05; 0 coefficients shrunk to exactly 0
+  (5) Permutation importance      (model-agnostic, 5 repeats)
+
+  Consensus across the 5 methods:
+                        feature    f_score  rank_rfe  sfs_selected  lasso_abs_coef  perm_importance  votes_out_of_5
+               MonsoonIntensity  155.54819         1             1         0.01164          0.10992               5
+                PopulationScore  151.07854         1             1         0.01179          0.11128               5
+                    DamsQuality  194.92036         1             1         0.01227          0.12070               5
+                   Urbanization  189.78370         1             1         0.01230          0.12379               5
+           CoastalVulnerability  124.30850         1             1         0.01206          0.11825               5
+                     Watersheds  149.75443         1             1         0.01163          0.10985               4
+             TopographyDrainage  176.00079         1             1         0.01171          0.10902               4
+               PoliticalFactors  120.95811         1             1         0.01223          0.12121               4
+                DrainageSystems  117.14846         1             1         0.01194          0.11743               4
+                RiverManagement  146.17995         7             0         0.01167          0.11193               3
+    DeterioratingInfrastructure  120.92887         1             1         0.01152          0.10730               2
+                  ClimateChange  121.04019         2             0         0.01173          0.11241               2
+          AgriculturalPractices  123.35089         9             0         0.01101          0.09651               1
+                  Encroachments  135.44384         4             0         0.01140          0.10656               1
+                  Deforestation  107.31710         5             0         0.01123          0.10301               0
+                      Siltation  116.11104        10             0         0.01110          0.09985               0
+IneffectiveDisasterPreparedness  103.09234         3             0         0.01143          0.10666               0
+                     Landslides   89.41844         6             0         0.01131          0.10335               0
+                    WetlandLoss  106.04539         8             0         0.01157          0.10976               0
+             InadequatePlanning  106.63958        11             0         0.01056          0.08994               0
+    -> table  saved: outputs/tables/03_feature_selection_ranking.csv
+
+  Features backed by >=3 of 5 methods: 10
+    ['MonsoonIntensity', 'PopulationScore', 'DamsQuality', 'Urbanization', 'CoastalVulnerability', 'Watersheds', 'TopographyDrainage', 'PoliticalFactors', 'DrainageSystems', 'RiverManagement']
+
+  k-sweep: hold-out R^2 of OLS trained on the top-k F-test features
+ k  test_r2                   added_feature
+ 1 0.038868                     DamsQuality
+ 2 0.072148                    Urbanization
+ 3 0.101348              TopographyDrainage
+ 4 0.119515                MonsoonIntensity
+ 5 0.144452                 PopulationScore
+ 6 0.188261                      Watersheds
+ 7 0.233316                 RiverManagement
+ 8 0.267995                   Encroachments
+ 9 0.299924            CoastalVulnerability
+10 0.350750           AgriculturalPractices
+11 0.380907                   ClimateChange
+12 0.434265                PoliticalFactors
+13 0.475085     DeterioratingInfrastructure
+14 0.512061                 DrainageSystems
+15 0.558374                       Siltation
+16 0.610561                   Deforestation
+17 0.663558              InadequatePlanning
+18 0.721543                     WetlandLoss
+19 0.776608 IneffectiveDisasterPreparedness
+20 0.834476                      Landslides
+    -> table  saved: outputs/tables/04_feature_selection_k_sweep.csv
+
+  Best k = 20 (R^2 = 0.834476) vs all 20 (R^2 = 0.834476); difference = +0.000000
+
+CONCLUSION ON FEATURE SELECTION
+-------------------------------
+  Read the ranking table above with care. The F-scores run from
+  89 to 195 - a spread of only
+  79.5% around the mean. The 20 factors are therefore
+  statistically EXCHANGEABLE, and which ones land in a "top 10" is
+  decided by sampling noise, not by importance. The disagreement between
+  the five methods in the votes column is itself the evidence: genuinely
+  unequal predictors would have made them agree.
+
+  The k-sweep settles it. Hold-out R^2 is
+  strictly increasing in k and
+  peaks at k=20; each feature adds roughly 1/20th of the total
+  explained variance. Dropping any 10 of them costs about half the
+  model's R^2, which is exactly what M6 in [4] demonstrates.
+
+  DECISION: retain all 20 features. This is a positive finding, not a
+  failure to find anything. It is direct evidence that the generative
+  process is additive and near-symmetric in all 20 factors, and it tells
+  the authority something actionable: no item can be cut from the audit
+  to save survey cost, and no single factor deserves priority attention.
+
+    -> figure saved: outputs/figures/05_feature_selection.png
+
+===============================================================================
+[4/6]  MODELING
+===============================================================================
+  Fitting models (all preprocessing inside a Pipeline):
+
+  M0 Baseline (mean)                 k=0   train R²=0.000000  test R²=-0.003535  RMSE=0.050863
+  M1 Simple LR (1 feature)           k=1   train R²=0.046488  test R²=0.038868  RMSE=0.049777
+  M2 Multiple LR (20 raw)            k=20  train R²=0.834591  test R²=0.834476  RMSE=0.020657
+  M3 Ridge (20 raw, CV alpha)        k=20  train R²=0.834590  test R²=0.834452  RMSE=0.020658
+  M4 Lasso (20 raw, CV alpha)        k=20  train R²=0.834590  test R²=0.834448  RMSE=0.020659
+  M5 ElasticNet (20 raw, CV)         k=20  train R²=0.834591  test R²=0.834473  RMSE=0.020657
+  M6 Multiple LR (10 selected)       k=10  train R²=0.404762  test R²=0.345550  RMSE=0.041075
+  M7 Multiple LR (20 + aggregates)   k=27  train R²=0.839398  test R²=0.840508  RMSE=0.020277
+
+  Reference challenger (NOT the deliverable - it exists only to
+  test whether the linear model loses materially on accuracy):
+  M8 HistGradientBoosting (20 raw)   k=20  train R²=0.974660  test R²=0.740264  RMSE=0.025876
+
+  Model comparison (sorted by hold-out R²):
+                           model  n_features   train_R2    test_R2  test_Adj_R2  test_RMSE   test_MAE   test_MSE
+M7 Multiple LR (20 + aggregates)          27   0.839398   0.840508     0.836078   0.020277   0.015980   0.000411
+         M2 Multiple LR (20 raw)          20   0.834591   0.834476     0.831094   0.020657   0.016212   0.000427
+      M5 ElasticNet (20 raw, CV)          20   0.834591   0.834473     0.831091   0.020657   0.016213   0.000427
+     M3 Ridge (20 raw, CV alpha)          20   0.834590   0.834452     0.831071   0.020658   0.016218   0.000427
+     M4 Lasso (20 raw, CV alpha)          20   0.834590   0.834448     0.831066   0.020659   0.016218   0.000427
+M8 HistGradientBoosting (20 raw)          20   0.974660   0.740264     0.734958   0.025876   0.020924   0.000670
+    M6 Multiple LR (10 selected)          10   0.404762   0.345550     0.338932   0.041075   0.033247   0.001687
+        M1 Simple LR (1 feature)           1   0.046488   0.038868     0.037905   0.049777   0.040083   0.002478
+              M0 Baseline (mean)           0   0.000000  -0.003535    -0.003535   0.050863   0.040969   0.002587
+    -> table  saved: outputs/tables/05_model_comparison.csv
+
+  5-fold cross-validation of the FINAL model (M7):
+    fold R² = [0.832343, 0.808572, 0.85049, 0.852015, 0.838476]
+    mean    = 0.836379   std = 0.015732
+    The spread across folds is 1.57e-02, so the estimate is
+    stable and the hold-out number is not a lucky split.
+    -> figure saved: outputs/figures/06_model_comparison.png
+
+===============================================================================
+[5/6]  EVALUATION
+===============================================================================
+  5.1 OLS inference (statsmodels) - coefficients, std errors, p-values
+                           term         coef      std_err            t      p_value       ci_low      ci_high  significant_5pct
+                          const    -0.087326     0.005998   -14.559679     0.000000    -0.099085    -0.075567              True
+               MonsoonIntensity     0.006091     0.000174    34.942853     0.000000     0.005750     0.006433              True
+             TopographyDrainage     0.006139     0.000173    35.392574     0.000000     0.005799     0.006479              True
+                RiverManagement     0.006045     0.000171    35.297517     0.000000     0.005709     0.006381              True
+                  Deforestation     0.005968     0.000177    33.750007     0.000000     0.005622     0.006315              True
+                   Urbanization     0.006397     0.000172    37.137481     0.000000     0.006060     0.006735              True
+                  ClimateChange     0.006165     0.000175    35.175951     0.000000     0.005822     0.006509              True
+                    DamsQuality     0.006198     0.000169    36.663334     0.000000     0.005867     0.006529              True
+                      Siltation     0.005843     0.000174    33.654451     0.000000     0.005503     0.006184              True
+          AgriculturalPractices     0.005900     0.000175    33.765077     0.000000     0.005557     0.006243              True
+                  Encroachments     0.006044     0.000176    34.409838     0.000000     0.005700     0.006388              True
+IneffectiveDisasterPreparedness     0.005996     0.000174    34.549887     0.000000     0.005656     0.006336              True
+                DrainageSystems     0.006238     0.000173    36.162079     0.000000     0.005900     0.006576              True
+           CoastalVulnerability     0.006298     0.000174    36.264298     0.000000     0.005958     0.006639              True
+                     Landslides     0.005874     0.000171    34.325271     0.000000     0.005538     0.006209              True
+                     Watersheds     0.006103     0.000173    35.346047     0.000000     0.005764     0.006441              True
+    DeterioratingInfrastructure     0.006005     0.000174    34.549252     0.000000     0.005664     0.006346              True
+                PopulationScore     0.006293     0.000178    35.434161     0.000000     0.005945     0.006641              True
+                    WetlandLoss     0.005972     0.000173    34.612762     0.000000     0.005634     0.006310              True
+             InadequatePlanning     0.005453     0.000171    31.937123     0.000000     0.005118     0.005788              True
+               PoliticalFactors     0.006266     0.000172    36.453941     0.000000     0.005929     0.006603              True
+                        agg_std     0.000486     0.001745     0.278411     0.780712    -0.002935     0.003906             False
+                        agg_max    -0.001435     0.000728    -1.969416     0.048975    -0.002863    -0.000006              True
+                        agg_min    -0.000591     0.000737    -0.802563     0.422275    -0.002036     0.000853             False
+                     agg_median     0.001053     0.001004     1.048460     0.294491    -0.000916     0.003021             False
+                       agg_skew     0.001280     0.001688     0.758405     0.448254    -0.002029     0.004588             False
+                     agg_sum_sq     0.000115     0.000303     0.379028     0.704687    -0.000480     0.000709             False
+                     agg_sum_cu    -0.001596     0.000173    -9.197387     0.000000    -0.001936    -0.001256              True
+    -> table  saved: outputs/tables/06_ols_coefficients.csv
+
+      F-statistic = 768.9 (p = 0.000e+00)  -> the model as a whole is significant
+      R² = 0.839398 | Adjusted R² = 0.838306
+      22 of 27 predictors are significant at the 5% level
+
+  5.2 Hold-out metrics, final model
+      train MAE=0.015713  MSE=3.982e-04  RMSE=0.019954  R²=0.839398  AdjR²=0.838306
+      test  MAE=0.015980  MSE=4.112e-04  RMSE=0.020277  R²=0.840508  AdjR²=0.836078
+      train-test R² gap = -0.001111  -> no meaningful overfitting
+
+  5.3 Classical OLS assumption checks
+      (1) Linearity          corr(fitted, resid) = -2.27e-15 -> ~0, no unmodelled trend
+      (2) Independence       Durbin-Watson = 1.9863 -> independent
+      (3) Homoscedasticity   Breusch-Pagan LM = 146.94, p = 0.0000
+          p < 0.05 -> heteroscedastic; see the note below
+      (4) Normality          Jarque-Bera = 1034.91 (p = 0.0000) | Shapiro-Wilk W = 0.9532 (p = 0.0000)
+          residual skew = +0.7643, excess kurtosis = +1.9680
+      (5) Multicollinearity  VIF (top 8):
+            term        VIF
+         agg_max      8.996
+        agg_skew      6.651
+         agg_std      4.104
+         agg_min      3.770
+      agg_median      3.145
+      agg_sum_cu      2.429
+     WetlandLoss      1.326
+PoliticalFactors      1.325
+          max VIF = 9.00; 0 of 27 terms exceed VIF = 10
+          The 20 raw factors are mutually uncorrelated by design, so
+          their VIFs sit near 1 - there is no multicollinearity among
+          the variables that carry the policy interpretation. The
+          larger values belong to the engineered shape/polynomial
+          terms, which overlap each other BY CONSTRUCTION. That widens
+          their own standard errors but leaves the raw coefficients
+          and the predictions unbiased.
+    -> table  saved: outputs/tables/07_vif.csv
+
+      ASSUMPTION VERDICT: homoscedasticity VIOLATED, normality VIOLATED
+      ------------------------------------------------------------------
+      What this does and does not invalidate:
+        * Coefficient ESTIMATES stay unbiased and consistent.
+          Gauss-Markov needs neither normal nor equal-variance
+          errors for unbiasedness, so the signs and magnitudes
+          driving the policy argument remain usable.
+        * Standard errors, t-tests, p-values and the intervals
+          in 5.4 ARE affected. Classical OLS formulae assume
+          constant variance and normal errors; without them the
+          nominal 95% coverage is not guaranteed - and 5.4
+          measures exactly how far off it lands.
+
+      REMEDY APPLIED: HC3 robust (heteroscedasticity-
+      consistent) standard errors, recomputed for every term.
+        SE inflation factor: median 1.000, max 1.321
+        Terms whose 5% significance verdict changes: 1
+        For intervals, a bootstrap or quantile-regression
+        interval would be the principled fix; 5.4 reports the
+        empirical coverage so the shortfall is visible, not hidden.
+    -> table  saved: outputs/tables/09_robust_standard_errors.csv
+    -> figure saved: outputs/figures/07_residual_diagnostics.png
+    -> figure saved: outputs/figures/08_coefficients_ci.png
+
+  5.4 Prediction intervals (the assignment's required plot)
+      mean 95% CI width (mean response)  = 0.006639
+      mean 95% PI width (new observation)= 0.078812
+      PI is 11.9x wider than the CI, as theory requires:
+        CI covers the uncertainty in the FITTED MEAN only;
+        PI adds the irreducible scatter of a single new district.
+      empirical coverage of the 95% PI = 92.90% (nominal 95%)
+      empirical coverage of the 95% CI = 9.60% (expected to be far below 95%, and that is correct behaviour)
+      PI CALIBRATION: under-covers by 2.1 points.
+        This is the practical consequence of the residual
+        non-normality flagged in 5.3: skewed, heavy-tailed
+        errors are not described well by a symmetric normal
+        interval, so roughly 1 district in 14 falls outside a
+        band advertised as covering 19 in 20. Reporting the
+        measured coverage alongside the nominal figure is the
+        honest minimum; a bootstrap interval would fix it.
+    -> figure saved: outputs/figures/09_prediction_with_intervals.png
+    -> table  saved: outputs/tables/08_prediction_interval_sample.csv
+
+===============================================================================
+[6/6]  DEPLOYMENT
+===============================================================================
+  6.1 Refitting the final model on ALL labelled rows
+      trained on 5,000 rows, 27 predictors
+      in-sample R² = 0.839934
+
+  6.2 Model persisted -> outputs/7115056116_final_model.joblib
+      The scaler lives inside the Pipeline, so loading this one file
+      is enough to score new data - no separate preprocessing state.
+
+  6.3 Scoring interface
+import joblib, pandas as pd
+art = joblib.load("outputs/<id>_final_model.joblib")
+raw = pd.DataFrame([{...20 factor scores...}])
+X   = add_aggregate_features(raw)[art["columns"]]
+p   = art["pipeline"].predict(X)
+
+      Worked example - 3 districts, point estimate + 95% PI:
+        district 0: predicted = 0.5202  95% PI = [0.4800, 0.5587]  (actual = 0.5250)
+        district 1: predicted = 0.4519  95% PI = [0.4123, 0.4911]  (actual = 0.4350)
+        district 2: predicted = 0.4955  95% PI = [0.4557, 0.5345]  (actual = 0.5000)
+
+  6.4 data/test.csv not present - no submission file written.
+      Add it and re-run to generate outputs/submission.csv.
+
+6.5 Monitoring and maintenance plan
+  - Track hold-out RMSE each planning cycle; retrain if it drifts by
+    more than 10% from the value recorded in results.json.
+  - Watch the input distributions: these are human audit scores, so a
+    change of rubric or of auditor shifts the feature means and silently
+    invalidates the coefficients.
+  - Report the 95% PREDICTION interval alongside every district score.
+    The point estimate alone invites false precision in budget meetings;
+    the interval is what makes the number honest.
+  - Re-examine any district whose residual exceeds 3 sd: that is either
+    a data-entry error or a genuinely unusual district, and both are
+    worth a human look.
+
+  ===========================================================================
+  FINAL VERDICT
+  ===========================================================================
+    Best linear model      : M7 Multiple LR (20 + aggregates)
+    Hold-out R²            : 0.840508
+    Hold-out RMSE          : 0.020277
+    Tree-ensemble reference: 0.740264 (+0.100244 vs the linear model)
+    The linear model MATCHES OR BEATS the tree ensemble.
+    Published winning R²   : 0.869
+    Gap to the winner      : -0.0285
+  ---------------------------------------------------------------------------
+    KAGGLE PRIVATE LEADERBOARD (real, from the competition)
+      teams on the board   : 2,794
+      winning score        : 0.86905 (aldparis)
+      median score         : 0.85800
+      THIS MODEL           : rank ~2,341 of 2,794  (top 83.8%)
+      Caveat: this is our hold-out R² mapped onto the private
+      leaderboard, not an actual submission. The board is
+      extremely compressed - a few thousandths of R² separate
+      hundreds of places - so read the rank as indicative.
+    Analytic success target: R² >= 0.8  -> MET
+  ===========================================================================
+
+All numeric results -> outputs/results.json
+Figures (9) -> outputs/figures/
+Tables  (8) -> outputs/tables/
+
+Done.
